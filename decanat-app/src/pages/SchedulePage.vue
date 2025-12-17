@@ -1,14 +1,8 @@
 <template>
   <div class="schedule-page">
     <div class="page-header">
-      <h2>Расписание занятий</h2>
+      <h2>Мое расписание</h2>
       <div class="controls">
-        <select v-model="selectedGroup" class="select-input">
-          <option value="all">Все группы</option>
-          <option value="1">Группа ИВТ-101</option>
-          <option value="2">Группа ИВТ-102</option>
-        </select>
-        
         <input 
           type="date" 
           v-model="selectedDate"
@@ -17,83 +11,137 @@
       </div>
     </div>
 
-    <div class="schedule-container">
-      <table class="schedule-table">
-        <thead>
-          <tr>
-            <th>Время</th>
-            <th>Понедельник</th>
-            <th>Вторник</th>
-            <th>Среда</th>
-            <th>Четверг</th>
-            <th>Пятница</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr v-for="pair in pairs" :key="pair.id">
-            <td class="time-cell">
-              <strong>{{ pair.time }}</strong>
-              <br>
-              <small>{{ pair.number }} пара</small>
-            </td>
-            <td v-for="day in days" :key="day">
-              <div v-if="getScheduleForDayAndPair(day, pair.id)" class="lesson-card">
-                <div class="lesson-subject">{{ getScheduleForDayAndPair(day, pair.id)?.subject }}</div>
-                <div class="lesson-teacher">{{ getScheduleForDayAndPair(day, pair.id)?.teacher }}</div>
-                <div class="lesson-room">Ауд: {{ getScheduleForDayAndPair(day, pair.id)?.room }}</div>
-              </div>
-            </td>
-          </tr>
-        </tbody>
-      </table>
+    <div v-if="isLoading" class="loading">
+      Загрузка расписания...
     </div>
 
-    <div class="mock-data-info">
-      <p>⚠️ Внимание: это демонстрационные данные. Для работы с реальными данными подключите бэкенд.</p>
+    <div v-else-if="error" class="error">
+      {{ error }}
+    </div>
+
+    <div v-else-if="schedules.length === 0" class="empty">
+      На этой неделе занятий нет
+    </div>
+
+    <div v-else class="schedule-container">
+      <div class="day-schedule" v-for="day in groupedSchedules" :key="day.date">
+        <h3>{{ formatDate(day.date) }}</h3>
+        <div class="lessons">
+          <div v-for="lesson in day.lessons" :key="lesson.id" class="lesson-card">
+            <div class="lesson-time">
+              <span class="pair-number">{{ lesson.pairNumber }} пара</span>
+              <span class="time-range">{{ getTimeForPair(lesson.pairNumber) }}</span>
+            </div>
+            <div class="lesson-details">
+              <h4>{{ lesson.subject.name }}</h4>
+              <p class="teacher">{{ lesson.teacher.name }}</p>
+              <p class="classroom">Аудитория: {{ lesson.classroom }}</p>
+              <p class="group" v-if="auth.isDecanatWorker">Группа: {{ lesson.group.name }}</p>
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref, onMounted, computed } from 'vue'
+import { useAuthStore } from '@/Stores/auth'
+import api from '@/services/api'
 
-interface Lesson {
+interface Schedule {
   id: number
-  day: string
-  pairId: number
-  subject: string
-  teacher: string
-  room: string
+  date: string
+  pairNumber: number
+  classroom: string
+  subject: {
+    id: number
+    name: string
+    description: string
+  }
+  teacher: {
+    id: number
+    name: string
+  }
+  group: {
+    id: number
+    name: string
+  }
 }
 
-const selectedGroup = ref('all')
+const auth = useAuthStore()
+const schedules = ref<Schedule[]>([])
+const isLoading = ref(false)
+const error = ref<string | null>(null)
 const selectedDate = ref('')
 
-// Демо-данные
-const days = ['Понедельник', 'Вторник', 'Среда', 'Четверг', 'Пятница']
+// Группировка расписания по дням
+const groupedSchedules = computed(() => {
+  const grouped: Record<string, Schedule[]> = {}
+  
+  schedules.value.forEach(schedule => {
+    if (!grouped[schedule.date]) {
+      grouped[schedule.date] = []
+    }
+    grouped[schedule.date].push(schedule)
+  })
+  
+  // Сортировка по дате и номеру пары
+  return Object.entries(grouped)
+    .sort(([dateA], [dateB]) => new Date(dateA).getTime() - new Date(dateB).getTime())
+    .map(([date, lessons]) => ({
+      date,
+      lessons: lessons.sort((a, b) => a.pairNumber - b.pairNumber)
+    }))
+})
 
-const pairs = [
-  { id: 1, number: '1', time: '8:30 - 10:00' },
-  { id: 2, number: '2', time: '10:10 - 11:40' },
-  { id: 3, number: '3', time: '12:00 - 13:30' },
-  { id: 4, number: '4', time: '14:00 - 15:30' },
-  { id: 5, number: '5', time: '15:40 - 17:10' },
-]
-
-const scheduleData = ref<Lesson[]>([
-  { id: 1, day: 'Понедельник', pairId: 1, subject: 'Программирование', teacher: 'Иванов А.А.', room: '101' },
-  { id: 2, day: 'Понедельник', pairId: 2, subject: 'Математика', teacher: 'Петрова М.И.', room: '202' },
-  { id: 3, day: 'Вторник', pairId: 1, subject: 'Базы данных', teacher: 'Сидоров В.П.', room: '303' },
-  { id: 4, day: 'Среда', pairId: 3, subject: 'Веб-разработка', teacher: 'Козлов Д.С.', room: '404' },
-  { id: 5, day: 'Четверг', pairId: 2, subject: 'Алгоритмы', teacher: 'Николаева Е.В.', room: '105' },
-  { id: 6, day: 'Пятница', pairId: 4, subject: 'Проектирование', teacher: 'Алексеев К.Н.', room: '206' },
-])
-
-const getScheduleForDayAndPair = (day: string, pairId: number) => {
-  return scheduleData.value.find(lesson => 
-    lesson.day === day && lesson.pairId === pairId
-  )
+const loadSchedule = async () => {
+  if (!auth.user) return
+  
+  isLoading.value = true
+  error.value = null
+  
+  try {
+    if (auth.isStudent && auth.user.studentId) {
+      schedules.value = await api.getStudentSchedule(auth.user.studentId)
+    } else if (auth.isTeacher && auth.user.teacherId) {
+      schedules.value = await api.getTeacherSchedule(auth.user.teacherId)
+    }
+  } catch (err: any) {
+    error.value = 'Ошибка загрузки расписания'
+    console.error(err)
+  } finally {
+    isLoading.value = false
+  }
 }
+
+const formatDate = (dateStr: string) => {
+  const date = new Date(dateStr)
+  return date.toLocaleDateString('ru-RU', {
+    weekday: 'long',
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric'
+  })
+}
+
+const getTimeForPair = (pairNumber: number) => {
+  const pairs = [
+    '8:30 - 10:00',
+    '10:10 - 11:40',
+    '12:00 - 13:30',
+    '14:00 - 15:30',
+    '15:40 - 17:10',
+    '17:20 - 18:50',
+    '19:00 - 20:30'
+  ]
+  return pairs[pairNumber - 1] || 'Время не указано'
+}
+
+onMounted(() => {
+  loadSchedule()
+})
 </script>
 
 <style scoped>
@@ -111,78 +159,82 @@ const getScheduleForDayAndPair = (day: string, pairId: number) => {
   margin-bottom: 2rem;
 }
 
-.controls {
-  display: flex;
-  gap: 1rem;
-}
-
-.select-input, .date-input {
+.date-input {
   padding: 0.5rem 1rem;
   border: 1px solid #ddd;
   border-radius: 5px;
   font-size: 1rem;
 }
 
-.schedule-table {
-  width: 100%;
-  border-collapse: collapse;
-  margin-top: 1rem;
-}
-
-.schedule-table th {
-  background: #667eea;
-  color: white;
-  padding: 1rem;
+.loading, .error, .empty {
   text-align: center;
+  padding: 3rem;
+  color: #666;
 }
 
-.schedule-table td {
+.error {
+  color: #e74c3c;
+}
+
+.day-schedule {
+  margin-bottom: 2rem;
+  padding: 1rem;
   border: 1px solid #e0e0e0;
-  padding: 1rem;
-  vertical-align: top;
-  min-width: 200px;
-  height: 120px;
+  border-radius: 8px;
 }
 
-.time-cell {
-  background: #f8f9fa;
-  text-align: center;
+.day-schedule h3 {
+  color: #667eea;
+  margin-bottom: 1rem;
+  padding-bottom: 0.5rem;
+  border-bottom: 2px solid #f0f0f0;
+}
+
+.lessons {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.lesson-card {
+  display: flex;
+  gap: 1rem;
+  padding: 1rem;
+  background: linear-gradient(135deg, #667eea15 0%, #764ba215 100%);
+  border-radius: 8px;
+  border-left: 4px solid #667eea;
+}
+
+.lesson-time {
+  min-width: 120px;
+  padding-right: 1rem;
+  border-right: 1px solid #e0e0e0;
+}
+
+.pair-number {
+  display: block;
   font-weight: bold;
   color: #333;
 }
 
-.lesson-card {
-  background: linear-gradient(135deg, #667eea15 0%, #764ba215 100%);
-  padding: 0.75rem;
-  border-radius: 8px;
-  border-left: 4px solid #667eea;
-  height: 100%;
+.time-range {
+  display: block;
+  font-size: 0.9rem;
+  color: #666;
 }
 
-.lesson-subject {
-  font-weight: bold;
+.lesson-details {
+  flex: 1;
+}
+
+.lesson-details h4 {
   color: #333;
   margin-bottom: 0.5rem;
 }
 
-.lesson-teacher {
-  color: #666;
+.teacher, .classroom, .group {
+  margin: 0.25rem 0;
+  color: #555;
   font-size: 0.9rem;
-  margin-bottom: 0.25rem;
-}
-
-.lesson-room {
-  color: #667eea;
-  font-size: 0.85rem;
-}
-
-.mock-data-info {
-  margin-top: 2rem;
-  padding: 1rem;
-  background: #fff3cd;
-  border: 1px solid #ffeaa7;
-  border-radius: 5px;
-  color: #856404;
-  text-align: center;
 }
 </style>

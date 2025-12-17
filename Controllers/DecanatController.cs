@@ -36,7 +36,8 @@ namespace COP.Controllers
                 PairNumber = s.PairNumber,
                 Group = new GroupDto { Id = s.Group.Id, Name = s.Group.Name },
                 Subject = new SubjectDto { Id = s.Subject.Id, Name = s.Subject.Name },
-                Teacher = new TeacherDto { Id = s.Teacher.Id, Name = s.Teacher.Name }
+                Teacher = new TeacherDto { Id = s.Teacher.Id, Name = s.Teacher.Name },
+                Classroom = s.Classroom
             });
 
             return Ok(scheduleDtos);
@@ -113,7 +114,8 @@ namespace COP.Controllers
                 PairNumber = schedule.PairNumber,
                 Group = new GroupDto { Id = schedule.Group.Id, Name = schedule.Group.Name },
                 Subject = new SubjectDto { Id = schedule.Subject.Id, Name = schedule.Subject.Name },
-                Teacher = new TeacherDto { Id = schedule.Teacher.Id, Name = schedule.Teacher.Name }
+                Teacher = new TeacherDto { Id = schedule.Teacher.Id, Name = schedule.Teacher.Name },
+                Classroom = schedule.Classroom
             };
 
             return CreatedAtAction(nameof(GetScheduleById), new { id = schedule.Id }, scheduleDto);
@@ -219,7 +221,8 @@ namespace COP.Controllers
                 PairNumber = schedule.PairNumber,
                 Group = new GroupDto { Id = schedule.Group.Id, Name = schedule.Group.Name },
                 Subject = new SubjectDto { Id = schedule.Subject.Id, Name = schedule.Subject.Name },
-                Teacher = new TeacherDto { Id = schedule.Teacher.Id, Name = schedule.Teacher.Name }
+                Teacher = new TeacherDto { Id = schedule.Teacher.Id, Name = schedule.Teacher.Name },
+                Classroom = schedule.Classroom
             };
 
             return Ok(scheduleDto);

@@ -17,6 +17,99 @@ namespace COP.Controllers
             _context = context;
         }
 
+        [HttpGet("{teacherId}/grades")]
+        public async Task<ActionResult<IEnumerable<ExamDto>>> GetTeacherGrades(int teacherId)
+        {
+            var exams = await _context.Exams
+                .Include(e => e.Student)
+                    .ThenInclude(s => s.Group)
+                .Include(e => e.Subject)
+                .Include(e => e.Teacher)
+                .Where(e => e.TeacherId == teacherId)
+                .OrderByDescending(e => e.Id)
+                .ToListAsync();
+
+            var examDtos = exams.Select(e => new ExamDto
+            {
+                Id = e.Id,
+                ExamScore = e.ExamScore,
+                Subject = new SubjectDto { Id = e.Subject.Id, Name = e.Subject.Name },
+                Student = new StudentDto
+                {
+                    Id = e.Student.Id,
+                    Name = e.Student.Name,
+                    Group = e.Student.Group != null ? new GroupDto
+                    {
+                        Id = e.Student.Group.Id,
+                        Name = e.Student.Group.Name
+                    } : null
+                },
+                Teacher = new TeacherDto { Id = e.Teacher.Id, Name = e.Teacher.Name }
+            });
+
+            return Ok(examDtos);
+        }
+
+        [HttpGet("exams")]
+        public async Task<ActionResult<IEnumerable<ExamDto>>> GetAllExams()
+        {
+            var exams = await _context.Exams
+                .Include(e => e.Student)
+                    .ThenInclude(s => s.Group) // ДОБАВЬТЕ ЭТО!
+                .Include(e => e.Subject)
+                .Include(e => e.Teacher)
+                .OrderByDescending(e => e.Id)
+                .ToListAsync();
+
+            var examDtos = exams.Select(e => new ExamDto
+            {
+                Id = e.Id,
+                ExamScore = e.ExamScore,
+                Subject = new SubjectDto { Id = e.Subject.Id, Name = e.Subject.Name },
+                Student = new StudentDto
+                {
+                    Id = e.Student.Id,
+                    Name = e.Student.Name,
+                    Group = e.Student.Group != null ? new GroupDto
+                    {
+                        Id = e.Student.Group.Id,
+                        Name = e.Student.Group.Name
+                    } : null
+                },
+                Teacher = new TeacherDto { Id = e.Teacher.Id, Name = e.Teacher.Name }
+            });
+
+            return Ok(examDtos);
+        }
+
+        // PUT: /api/teacher/grade/{id}
+        [HttpPut("grade/{id}")]
+        public async Task<IActionResult> UpdateGrade(int id, [FromBody] CreateExamDto updateDto)
+        {
+            var exam = await _context.Exams.FindAsync(id);
+            if (exam == null)
+                return NotFound("Оценка не найдена");
+
+            exam.ExamScore = updateDto.ExamScore;
+            await _context.SaveChangesAsync();
+
+            return NoContent();
+        }
+
+        // DELETE: /api/teacher/grade/{id}
+        [HttpDelete("grade/{id}")]
+        public async Task<IActionResult> DeleteGrade(int id)
+        {
+            var exam = await _context.Exams.FindAsync(id);
+            if (exam == null)
+                return NotFound("Оценка не найдена");
+
+            _context.Exams.Remove(exam);
+            await _context.SaveChangesAsync();
+
+            return NoContent();
+        }
+
         // Получить расписание преподавателя
         [HttpGet("{teacherId}/schedule")]
         public async Task<ActionResult<IEnumerable<ScheduleDto>>> GetTeacherSchedule(int teacherId)
@@ -45,7 +138,8 @@ namespace COP.Controllers
                 PairNumber = s.PairNumber,
                 Group = new GroupDto { Id = s.Group.Id, Name = s.Group.Name },
                 Subject = new SubjectDto { Id = s.Subject.Id, Name = s.Subject.Name },
-                Teacher = new TeacherDto { Id = s.Teacher.Id, Name = s.Teacher.Name }
+                Teacher = new TeacherDto { Id = s.Teacher.Id, Name = s.Teacher.Name },
+                Classroom = s.Classroom
             });
 
             return Ok(scheduleDtos);
@@ -119,14 +213,19 @@ namespace COP.Controllers
         public async Task<ActionResult<IEnumerable<StudentDto>>> GetStudents()
         {
             var students = await _context.Students
-                .Include(s => s.Group)
+                .Include(s => s.Group) // Включаем группу
+                .OrderBy(s => s.Name)
                 .ToListAsync();
 
             var studentDtos = students.Select(s => new StudentDto
             {
                 Id = s.Id,
                 Name = s.Name,
-                Group = new GroupDto { Id = s.Group.Id, Name = s.Group.Name }
+                Group = s.Group != null ? new GroupDto
+                {
+                    Id = s.Group.Id,
+                    Name = s.Group.Name
+                } : null
             });
 
             return Ok(studentDtos);

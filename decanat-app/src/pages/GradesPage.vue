@@ -1,65 +1,94 @@
 <template>
   <div class="grades-page">
-    <h2>Журнал успеваемости</h2>
+    <h2>Мои оценки</h2>
     
-    <div class="grades-summary">
-      <div class="summary-card">
-        <div class="summary-value">4.8</div>
-        <div class="summary-label">Средний балл</div>
-      </div>
-      <div class="summary-card">
-        <div class="summary-value">12</div>
-        <div class="summary-label">Всего предметов</div>
-      </div>
-      <div class="summary-card">
-        <div class="summary-value">3</div>
-        <div class="summary-label">Зачеты сданы</div>
-      </div>
+    <div v-if="isLoading" class="loading">
+      Загрузка оценок...
     </div>
 
-    <div class="grades-table-container">
-      <table class="grades-table">
-        <thead>
-          <tr>
-            <th>Предмет</th>
-            <th>Преподаватель</th>
-            <th>Оценки</th>
-            <th>Средний балл</th>
-            <th>Статус</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr v-for="subject in subjects" :key="subject.id">
-            <td>{{ subject.name }}</td>
-            <td>{{ subject.teacher }}</td>
-            <td>
-              <div class="grades-list">
-                <span 
-                  v-for="grade in subject.grades" 
-                  :key="grade"
-                  :class="['grade-badge', getGradeClass(grade)]"
-                >
-                  {{ grade }}
+    <div v-else-if="error" class="error">
+      {{ error }}
+    </div>
+
+    <div v-else>
+      <div class="grades-summary">
+        <div class="summary-card">
+          <div class="summary-value">{{ averageGrade }}</div>
+          <div class="summary-label">Средний балл</div>
+        </div>
+        <div class="summary-card">
+          <div class="summary-value">{{ totalSubjects }}</div>
+          <div class="summary-label">Всего предметов</div>
+        </div>
+        <div class="summary-card">
+          <div class="summary-value">{{ passedSubjects }}</div>
+          <div class="summary-label">Сдано предметов</div>
+        </div>
+      </div>
+
+      <div class="grades-table-container">
+        <table class="grades-table">
+          <thead>
+            <tr>
+              <th>Предмет</th>
+              <th>Преподаватель</th>
+              <th>Оценки</th>
+              <th>Средний балл</th>
+              <th>Статус</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="subject in groupedGrades" :key="subject.id">
+              <td>{{ subject.name }}</td>
+              <td>{{ subject.teacher }}</td>
+              <td>
+                <div class="grades-list">
+                  <span 
+                    v-for="grade in subject.grades" 
+                    :key="grade"
+                    :class="['grade-badge', getGradeClass(grade)]"
+                  >
+                    {{ grade }}
+                  </span>
+                </div>
+              </td>
+              <td>
+                <span class="average-grade">{{ subject.average.toFixed(2) }}</span>
+              </td>
+              <td>
+                <span :class="['status-badge', subject.average >= 4 ? 'success' : 'warning']">
+                  {{ subject.average >= 4 ? 'Сдан' : 'В процессе' }}
                 </span>
-              </div>
-            </td>
-            <td>
-              <span class="average-grade">{{ subject.average }}</span>
-            </td>
-            <td>
-              <span :class="['status-badge', subject.status === 'Сдан' ? 'success' : 'warning']">
-                {{ subject.status }}
-              </span>
-            </td>
-          </tr>
-        </tbody>
-      </table>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, onMounted, computed } from 'vue'
+import { useAuthStore } from '@/Stores/auth'
+import api from '@/services/api'
+
+interface Exam {
+  id: number
+  examScore: number
+  subject: {
+    id: number
+    name: string
+  }
+  teacher: {
+    id: number
+    name: string
+  }
+  student: {
+    id: number
+    name: string
+  }
+}
 
 interface SubjectGrade {
   id: number
@@ -67,22 +96,77 @@ interface SubjectGrade {
   teacher: string
   grades: number[]
   average: number
-  status: 'Сдан' | 'В процессе'
 }
 
-const subjects = ref<SubjectGrade[]>([
-  { id: 1, name: 'Программирование', teacher: 'Иванов А.А.', grades: [5, 4, 5, 5], average: 4.75, status: 'Сдан' },
-  { id: 2, name: 'Математика', teacher: 'Петрова М.И.', grades: [4, 4, 3, 5], average: 4.0, status: 'В процессе' },
-  { id: 3, name: 'Базы данных', teacher: 'Сидоров В.П.', grades: [5, 5, 5], average: 5.0, status: 'Сдан' },
-  { id: 4, name: 'Веб-разработка', teacher: 'Козлов Д.С.', grades: [4, 4, 4, 4], average: 4.0, status: 'В процессе' },
-  { id: 5, name: 'Алгоритмы', teacher: 'Николаева Е.В.', grades: [5, 5, 4], average: 4.67, status: 'Сдан' },
-])
+const auth = useAuthStore()
+const exams = ref<Exam[]>([])
+const isLoading = ref(false)
+const error = ref<string | null>(null)
+
+// Вычисляемые свойства
+const groupedGrades = computed(() => {
+  const subjects: Record<number, SubjectGrade> = {}
+  
+  exams.value.forEach(exam => {
+    if (!subjects[exam.subject.id]) {
+      subjects[exam.subject.id] = {
+        id: exam.subject.id,
+        name: exam.subject.name,
+        teacher: exam.teacher.name,
+        grades: [],
+        average: 0
+      }
+    }
+    subjects[exam.subject.id].grades.push(exam.examScore)
+  })
+  
+  // Рассчитываем средний балл для каждого предмета
+  Object.values(subjects).forEach(subject => {
+    const sum = subject.grades.reduce((a, b) => a + b, 0)
+    subject.average = sum / subject.grades.length
+  })
+  
+  return Object.values(subjects)
+})
+
+const averageGrade = computed(() => {
+  if (groupedGrades.value.length === 0) return 0
+  const sum = groupedGrades.value.reduce((acc, subject) => acc + subject.average, 0)
+  return (sum / groupedGrades.value.length).toFixed(2)
+})
+
+const totalSubjects = computed(() => groupedGrades.value.length)
+
+const passedSubjects = computed(() => {
+  return groupedGrades.value.filter(subject => subject.average >= 4).length
+})
+
+// Методы
+const loadGrades = async () => {
+  if (!auth.user?.studentId) return
+  
+  isLoading.value = true
+  error.value = null
+  
+  try {
+    exams.value = await api.getStudentGrades(auth.user.studentId)
+  } catch (err: any) {
+    error.value = 'Ошибка загрузки оценок'
+    console.error(err)
+  } finally {
+    isLoading.value = false
+  }
+}
 
 const getGradeClass = (grade: number) => {
   if (grade >= 4) return 'grade-good'
   if (grade === 3) return 'grade-medium'
   return 'grade-bad'
 }
+
+onMounted(() => {
+  loadGrades()
+})
 </script>
 
 <style scoped>
@@ -91,6 +175,16 @@ const getGradeClass = (grade: number) => {
   border-radius: 10px;
   padding: 2rem;
   box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+.loading, .error {
+  text-align: center;
+  padding: 3rem;
+  color: #666;
+}
+
+.error {
+  color: #e74c3c;
 }
 
 .grades-summary {

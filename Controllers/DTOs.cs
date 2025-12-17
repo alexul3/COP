@@ -27,6 +27,7 @@
         public GroupDto Group { get; set; }
         public SubjectDto Subject { get; set; }
         public TeacherDto Teacher { get; set; }
+        public string Classroom { get; set; }
     }
 
     // DTO для оценки

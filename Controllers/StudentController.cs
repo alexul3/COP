@@ -48,7 +48,8 @@ namespace COP.Controllers
                 PairNumber = s.PairNumber,
                 Group = new GroupDto { Id = s.Group.Id, Name = s.Group.Name },
                 Subject = new SubjectDto { Id = s.Subject.Id, Name = s.Subject.Name },
-                Teacher = new TeacherDto { Id = s.Teacher.Id, Name = s.Teacher.Name }
+                Teacher = new TeacherDto { Id = s.Teacher.Id, Name = s.Teacher.Name },
+                Classroom = s.Classroom
             });
 
             return Ok(scheduleDtos);
